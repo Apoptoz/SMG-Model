@@ -1,0 +1,201 @@
+// print function 'condProb2Table' for conditional probability tables
+///fold:
+var condProb2Table = function(condProbFct, row_names, col_names, precision){
+  var matrix = map(function(row) {
+    map(function(col) {
+      _.round(Math.exp(condProbFct(row).score(col)),precision)}, 
+        col_names)}, 
+                   row_names)
+  var max_length_col = _.max(map(function(c) {c.length}, col_names))
+  var max_length_row = _.max(map(function(r) {r.length}, row_names))
+  var header = _.repeat(" ", max_length_row + 2)+ col_names.join("  ") + "\n"
+  var row = mapIndexed(function(i,r) { _.padEnd(r, max_length_row, " ") + "  " + 
+                       mapIndexed(function(j,c) {
+                          _.padEnd(matrix[i][j], c.length+2," ")}, 
+                                  col_names).join("") + "\n" }, 
+                           row_names).join("")
+  return header + row
+}
+// This function constructs the list of possible personae
+var listPersonae = function(universe,relation) {   
+  var fun = function(universe,relation,index1,index2,list) {
+    if (index1 === 0) {
+      return list;
+    }
+    else if (index2 === -1) {
+      return fun(universe,relation,index1-1,index1-2,list);
+    }
+    // Si il n'y a pas relation
+    else if ( relation[universe[index1]] !== universe[index2] 
+             && relation[universe[index2]] !== universe[index1]) {
+      list.push(universe[index1]+'-'+universe[index2]);
+      return fun(universe,relation,index1,index2-1,list);
+    }
+    else  {
+      return fun(universe,relation,index1,index2-1,list);
+    }
+  }
+  var size = universe.length;
+  return fun(universe,relation,size-1,size-2,[]);
+}
+///
+
+/// PARAMETERS ///
+
+
+// List here the set of properties
+var universe = ['competent','incompetent','friendly','aloof'];
+
+// List here the relations of incompability
+var relation = 
+    { 'competent':'incompetent',
+      'friendly':'aloof'
+    };
+
+var personae = listPersonae(universe,relation);
+
+// Possible utterances
+var utterances = ["ing","in"];
+
+// Cost of uttering a message
+var cost = function(utterance){
+  var table = {
+    in:0,
+    ing:0
+  };
+  return table[utterance];
+};
+
+// Temperature for the speaker, high temparature means deterministic
+// choice for the speaker to chose a message given a persona.
+// Low value allows for more variation.
+var temperature = 6;
+
+// Temperature for chosing a persona, according to the payoff function
+var personaTemperature = 6;
+
+// Payoff function for selecting a persona
+var muFunction = function(personality) {
+  var table = {
+    "friendly-competent":6,
+    "aloof-competent":4,
+    "friendly-incompetent":4,
+    "aloof-incompetent":0
+  };
+  return table[personality];
+}
+
+//  Prior distribution of the listener on the personae of the speaker
+var personalityPrior = function() {
+  categorical({
+    ps:[0.3,0.3,0.2,0.2],
+    vs:personae
+  })
+  //uniformDraw(personae);
+};
+
+// Return true if a persona corresponds to the Eckert-Montague field of a variation
+var belongToVar = function(utterance,personality) {
+  utterance === "in" ? personality !== "aloof-competent":
+  utterance === "ing" ? personality !== "friendly-incompetent":
+  true
+}
+
+
+var eckertFields = {
+  ing:['competent','aloof'],
+  in:['incompetent','friendly']
+};
+//On devrait construire le eckert-montague field à partir de ça
+
+
+
+
+///  END OF PARAMETERS  ///
+
+
+/// MODEL FUNCTIONS ///
+
+//Pr(P|m) > listener prior belief in a persona given a message
+var conditPrior = function(utterance) {
+  Infer({model: function() {
+         var personality = personalityPrior();
+         var uttTruthVal = belongToVar(utterance,personality);
+         condition(uttTruthVal == true)
+         return personality
+  }})
+};
+
+//Ps(m|P) > speaker probability of using m given they want to construct P
+var speaker = function(personality) {
+  Infer({model: function() {
+    var utterance = uniformDraw(utterances);   
+    factor(temperature * (conditPrior(utterance).score(personality) - cost(utterance)))
+    return utterance
+  }})
+};
+
+// P_PERS(P) > Probability of chosing a persona
+var persDistribution = function() {
+  Infer({model: function() {
+    var personality = uniformDraw(personae)
+    factor(personaTemperature * muFunction(personality))
+    return personality
+  }})
+}
+
+// P_S(m) > Probability of a speaker of uttering a message
+var speakerDistrib = function(utterance) {
+  return sum(map(
+    function(personality) {
+      return Math.exp(persDistribution().score(personality)+speaker(personality).score(utterance));
+    },personae))
+}
+
+// P_L(P|m)
+var listener = function(utterance) {
+  Infer({model: function() {
+    var personality = personalityPrior()
+    observe(speaker(personality),utterance)
+    return personality
+  }})
+}
+
+print("List of personae and their prior probabilities:");
+viz.table(Infer({method:'enumerate'},personalityPrior));
+print('');
+
+
+/// Pr(P|m)
+
+print("Visualization 1:")
+display("L's prior belief about S to chose a persona after hearing m")
+display(condProb2Table(conditPrior,utterances,personae,2))
+
+print("Vizualization 2:")
+print("Listener belief of a persona after hearing 'ing':");
+viz(conditPrior("ing"));
+print("Listener belief of a persona after hearing 'in':");
+viz(conditPrior("in"));
+
+/// Ps(m|P)
+display("Probability of S to use a message given a persona she wants to build:")
+display(condProb2Table(speaker,personae,utterances,2));
+
+
+//P_PERS(P)
+display("")
+display("Probability distribution of chosing a persona :")
+viz.table(persDistribution())
+
+//P_S(m)
+print("Probability of speaker uttering 'in': ");
+print(speakerDistrib("in"));
+print("Probability of speaker uttering 'ing': ");
+print(speakerDistrib("ing"));
+print("")
+
+//P_L(P|m)
+print("L's beliefs about a persona after hearing m (here in)")
+viz(listener("in"))
+display(condProb2Table(listener,utterances,personae,2))
