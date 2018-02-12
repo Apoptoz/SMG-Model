@@ -70,7 +70,7 @@ var cost = function(utterance){
 // choice for the speaker to chose a message given a persona.
 // Low value allows for more variation.
 var temperature = 6;
-
+//var temperature = function() { return randomInteger(50)};
 // Temperature for chosing a persona, according to the payoff function
 var personaTemperature = 6;
 
@@ -115,6 +115,8 @@ var eckertFields = {
 
 
 /// MODEL FUNCTIONS ///
+
+
 
 //Pr(P|m) > listener prior belief in a persona given a message
 var conditPrior = function(utterance) {
@@ -161,6 +163,10 @@ var listener = function(utterance) {
   }})
 }
 
+
+/// END OF MODEL ///
+
+
 print("List of personae and their prior probabilities:");
 viz.table(Infer({method:'enumerate'},personalityPrior));
 print('');
@@ -199,3 +205,4 @@ print("")
 print("L's beliefs about a persona after hearing m (here in)")
 viz(listener("in"))
 display(condProb2Table(listener,utterances,personae,2))
+
