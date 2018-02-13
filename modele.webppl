@@ -17,7 +17,8 @@ var condProb2Table = function(condProbFct, row_names, col_names, precision){
   return header + row
 }
 // This function constructs the list of possible personae
-var listPersonae = function(universe,relation) {   
+var listPersonae = function(universe,relation) {
+  //Auxiliary function to iterate over the list
   var fun = function(universe,relation,index1,index2,list) {
     if (index1 === 0) {
       return list;
@@ -25,7 +26,7 @@ var listPersonae = function(universe,relation) {
     else if (index2 === -1) {
       return fun(universe,relation,index1-1,index1-2,list);
     }
-    // Si il n'y a pas relation
+    // If the two universe are not antagonists, add to the list
     else if ( relation[universe[index1]] !== universe[index2] 
              && relation[universe[index2]] !== universe[index1]) {
       list.push(universe[index1]+'-'+universe[index2]);
@@ -38,6 +39,7 @@ var listPersonae = function(universe,relation) {
   var size = universe.length;
   return fun(universe,relation,size-1,size-2,[]);
 }
+
 ///
 
 /// PARAMETERS ///
@@ -129,10 +131,12 @@ var conditPrior = function(utterance) {
 };
 
 //Ps(m|P) > speaker probability of using m given they want to construct P
-var speaker = function(personality) {
+var speaker = function(personality,temp) {
+  var temp = temp || temperature;
+  //print("Température : " + temp);
   Infer({model: function() {
     var utterance = uniformDraw(utterances);   
-    factor(temperature * (conditPrior(utterance).score(personality) - cost(utterance)))
+    factor(temp * (conditPrior(utterance).score(personality) - cost(utterance)))
     return utterance
   }})
 };
@@ -167,6 +171,36 @@ var listener = function(utterance) {
 /// END OF MODEL ///
 
 
+// Return an array composed of all the integers from a to b (both included)
+var rangeN = function(a,b) {
+  var aux = function(a,b,acc) {
+    acc.push(a);
+    b == a ? acc : aux(a+1,b,acc);
+  }
+  return aux(a,b,[]);
+}
+// Plot the speaker probability of uttering m for different values of temperature
+// minBound and maxBoud are optional parameters for min and max value of temperature
+// They are set by default to 1 and 50 respectively
+// Future implementation: plot for each m or p ?
+// Should check that maxBound > minBound
+var speakerTempPlot = function(utterance,personality,minBound,maxBound) {
+  var minBound = minBound || 1;
+  var maxBound = maxBound || 50;
+  
+  var tempValues = rangeN(minBound,maxBound);
+  
+  var y = map(
+  function(x) { return Math.exp(speaker(personality,x).score(utterance));},
+    tempValues);
+  viz.line(tempValues,y);  
+};
+
+
+
+
+
+/**/
 print("List of personae and their prior probabilities:");
 viz.table(Infer({method:'enumerate'},personalityPrior));
 print('');
@@ -184,9 +218,14 @@ viz(conditPrior("ing"));
 print("Listener belief of a persona after hearing 'in':");
 viz(conditPrior("in"));
 
+
 /// Ps(m|P)
 display("Probability of S to use a message given a persona she wants to build:")
 display(condProb2Table(speaker,personae,utterances,2));
+
+print("Plot of the probability of uttering 'ing' given she wants to be")
+print("friendly and incompetent, for different temperatures")
+speakerTempPlot("ing","friendly-competent");
 
 
 //P_PERS(P)
@@ -205,4 +244,3 @@ print("")
 print("L's beliefs about a persona after hearing m (here in)")
 viz(listener("in"))
 display(condProb2Table(listener,utterances,personae,2))
-
