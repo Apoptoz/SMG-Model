@@ -133,7 +133,6 @@ var conditPrior = function(utterance) {
 //Ps(m|P) > speaker probability of using m given they want to construct P
 var speaker = function(personality,temp) {
   var temp = temp || temperature;
-  //print("Température : " + temp);
   Infer({model: function() {
     var utterance = uniformDraw(utterances);   
     factor(temp * (conditPrior(utterance).score(personality) - cost(utterance)))
