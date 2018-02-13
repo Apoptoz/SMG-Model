@@ -192,7 +192,7 @@ var speakerTempPlot = function(utterance,personality,minBound,maxBound) {
   var y = map(
   function(x) { return Math.exp(speaker(personality,x).score(utterance));},
     tempValues);
-  viz.line(tempValues,y);  
+  viz.line(tempValues,y,{xLabel:"Temperature",yLabel:"Ps(m|p)");  
 };
 
 
