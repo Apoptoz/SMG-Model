@@ -1,5 +1,5 @@
-// print function 'condProb2Table' for conditional probability tables
 ///fold:
+// print function 'condProb2Table' for conditional probability tables
 var condProb2Table = function(condProbFct, row_names, col_names, precision){
   var matrix = map(function(row) {
     map(function(col) {
@@ -29,7 +29,7 @@ var listPersonae = function(universe,relation) {
     // If the two universe are not antagonists, add to the list
     else if ( relation[universe[index1]] !== universe[index2] 
              && relation[universe[index2]] !== universe[index1]) {
-      list.push(universe[index1]+'-'+universe[index2]);
+      list.push([universe[index1],universe[index2]]);
       return fun(universe,relation,index1,index2-1,list);
     }
     else  {
@@ -38,6 +38,9 @@ var listPersonae = function(universe,relation) {
   }
   var size = universe.length;
   return fun(universe,relation,size-1,size-2,[]);
+}
+var isIn = function(val,arr) {
+  return arr.indexOf(val) > -1;
 }
 
 ///
@@ -72,19 +75,21 @@ var cost = function(utterance){
 // choice for the speaker to chose a message given a persona.
 // Low value allows for more variation.
 var temperature = 6;
-//var temperature = function() { return randomInteger(50)};
 // Temperature for chosing a persona, according to the payoff function
 var personaTemperature = 6;
 
 // Payoff function for selecting a persona
+// PROBLEM: You have to get the same struct and order than the one
+// that personae gives you.
 var muFunction = function(personality) {
+  var persString = personality.join("-");
   var table = {
     "friendly-competent":6,
     "aloof-competent":4,
     "friendly-incompetent":4,
     "aloof-incompetent":0
   };
-  return table[personality];
+  return table[persString];
 }
 
 //  Prior distribution of the listener on the personae of the speaker
@@ -97,23 +102,27 @@ var personalityPrior = function() {
 };
 
 // Return true if a persona corresponds to the Eckert-Montague field of a variation
+// NO LONGER USEFUL! You can get EM Field with getEMField(utt)
 var belongToVar = function(utterance,personality) {
   utterance === "in" ? personality !== "aloof-competent":
   utterance === "ing" ? personality !== "friendly-incompetent":
   true
 }
 
-
 var eckertFields = {
   ing:['competent','aloof'],
   in:['incompetent','friendly']
 };
-//On devrait construire le eckert-montague field à partir de ça
-
-
+// Return the EM Field of an utterance based on the eckertFields var
+var getEMField = cache(function(utt) {
+  return filter(function(x) { 
+    return _.intersection(eckertFields[utt],x).length !== 0;
+  },personae);
+});
 
 
 ///  END OF PARAMETERS  ///
+
 
 
 /// MODEL FUNCTIONS ///
@@ -123,10 +132,11 @@ var eckertFields = {
 //Pr(P|m) > listener prior belief in a persona given a message
 var conditPrior = function(utterance) {
   Infer({model: function() {
-         var personality = personalityPrior();
-         var uttTruthVal = belongToVar(utterance,personality);
-         condition(uttTruthVal == true)
-         return personality
+    var personality = personalityPrior();
+    var uttTruthVal = isIn(personality,getEMField(utterance));
+    //var uttTruthVal = belongToVar(utterance,personality);
+    condition(uttTruthVal == true)
+    return personality
   }})
 };
 
@@ -172,6 +182,9 @@ var listener = function(utterance) {
 
 // Return an array composed of all the integers from a to b (both included)
 var rangeN = function(a,b) {
+  if (b<a) {
+    console.error("rangeN : B should not be inferior to A")
+  }
   var aux = function(a,b,acc) {
     acc.push(a);
     b == a ? acc : aux(a+1,b,acc);
@@ -192,14 +205,14 @@ var speakerTempPlot = function(utterance,personality,minBound,maxBound) {
   var y = map(
   function(x) { return Math.exp(speaker(personality,x).score(utterance));},
     tempValues);
-  viz.line(tempValues,y,{xLabel:"Temperature",yLabel:"Ps(m|p)");  
+  viz.line(tempValues,y,{xLabel:"Temperature",yLabel:"Ps(m|p)"});  
 };
 
 
 
 
 
-/**/
+
 print("List of personae and their prior probabilities:");
 viz.table(Infer({method:'enumerate'},personalityPrior));
 print('');
@@ -213,11 +226,11 @@ display(condProb2Table(conditPrior,utterances,personae,2))
 
 print("Vizualization 2:")
 print("Listener belief of a persona after hearing 'ing':");
-viz(conditPrior("ing"));
+viz.hist(conditPrior("ing"));
 print("Listener belief of a persona after hearing 'in':");
-viz(conditPrior("in"));
+viz.table(conditPrior("in"));
 
-
+/*
 /// Ps(m|P)
 display("Probability of S to use a message given a persona she wants to build:")
 display(condProb2Table(speaker,personae,utterances,2));
@@ -243,3 +256,4 @@ print("")
 print("L's beliefs about a persona after hearing m (here in)")
 viz(listener("in"))
 display(condProb2Table(listener,utterances,personae,2))
+*/
