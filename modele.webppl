@@ -1,6 +1,7 @@
 ///fold:
 // print function 'condProb2Table' for conditional probability tables
-var condProb2Table = function(condProbFct, row_names, col_names, precision){
+var condProb2Table = function(condProbFct, row_names, col_names, 
+precision){
   var matrix = map(function(row) {
     map(function(col) {
       _.round(Math.exp(condProbFct(row).score(col)),precision)}, 
@@ -8,8 +9,10 @@ var condProb2Table = function(condProbFct, row_names, col_names, precision){
                    row_names)
   var max_length_col = _.max(map(function(c) {c.length}, col_names))
   var max_length_row = _.max(map(function(r) {r.length}, row_names))
-  var header = _.repeat(" ", max_length_row + 2)+ col_names.join("  ") + "\n"
-  var row = mapIndexed(function(i,r) { _.padEnd(r, max_length_row, " ") + "  " + 
+  var header = _.repeat(" ", max_length_row + 2)+ col_names.join("  ") + 
+"\n"
+  var row = mapIndexed(function(i,r) { _.padEnd(r, max_length_row, " ") 
++ "  " + 
                        mapIndexed(function(j,c) {
                           _.padEnd(matrix[i][j], c.length+2," ")}, 
                                   col_names).join("") + "\n" }, 
@@ -93,15 +96,21 @@ var muFunction = function(personality) {
 }
 
 //  Prior distribution of the listener on the personae of the speaker
-var personalityPrior = function() {
-  categorical({
-    ps:[0.3,0.3,0.2,0.2],
-    vs:personae
+var personalityPrior = function(prior) {
+  if (prior==="uniform") {
+    uniformDraw(personae);
+  }
+  else {
+    var prior = prior || [0.3,0.3,0.2,0.2];
+    categorical({
+      ps:prior,
+      vs:personae
   })
-  //uniformDraw(personae);
+  }
 };
 
-// Return true if a persona corresponds to the Eckert-Montague field of a variation
+// Return true if a persona corresponds to the Eckert-Montague field of 
+// a variation
 // NO LONGER USEFUL! You can get EM Field with getEMField(utt)
 var belongToVar = function(utterance,personality) {
   utterance === "in" ? personality !== "aloof-competent":
@@ -130,23 +139,13 @@ var getEMField = cache(function(utt) {
 
 
 //Pr(P|m) > listener prior belief in a persona given a message
-var conditPrior = function(utterance) {
+var conditPrior = function(utterance,prior) {
   Infer({model: function() {
-    var personality = personalityPrior();
+    var personality = personalityPrior(prior);
     var uttTruthVal = isIn(personality,getEMField(utterance));
     //var uttTruthVal = belongToVar(utterance,personality);
     condition(uttTruthVal == true)
     return personality
-  }})
-};
-
-//Ps(m|P) > speaker probability of using m given they want to construct P
-var speaker = function(personality,temp) {
-  var temp = temp || temperature;
-  Infer({model: function() {
-    var utterance = uniformDraw(utterances);   
-    factor(temp * (conditPrior(utterance).score(personality) - cost(utterance)))
-    return utterance
   }})
 };
 
@@ -158,6 +157,27 @@ var persDistribution = function() {
     return personality
   }})
 }
+
+//Ps(m|P) > speaker probability of using m given they want to construct P
+//var speaker = function(personality,{tempOpt:temp,priorOpt:prior}) {
+var speaker = function(personality,option) {
+  
+  //var defPrior = Math.exp(Infer({method:'enumerate'},personalityPrior).score(personality));
+  //print("DefPrior is:" + defPrior);
+  var temp = option.tempOpt == undefined ? temperature : option.tempOpt;
+  
+  //var prior = prior == undefined ? defPrior : prior;
+  //print("prior is :"+ prior);
+  
+  Infer({model: function() {
+    var utterance = uniformDraw(utterances);   
+    factor(temp * (conditPrior(utterance,option.priorOpt).score(personality) - 
+cost(utterance)))
+    return utterance
+  }})
+};
+
+
 
 // P_S(m) > Probability of a speaker of uttering a message
 var speakerDistrib = function(utterance) {
@@ -180,7 +200,8 @@ var listener = function(utterance) {
 /// END OF MODEL ///
 
 
-// Return an array composed of all the integers from a to b (both included)
+// Return an array composed of all the integers from a to b (both 
+// included)
 var rangeN = function(a,b) {
   if (b<a) {
     console.error("rangeN : B should not be inferior to A")
@@ -191,28 +212,105 @@ var rangeN = function(a,b) {
   }
   return aux(a,b,[]);
 }
+// Return a distribution with salient persona with probability p
+// and others equally probable
+var salientPersonaDis = function(p,salientPersona) {
+  if(!isIn(salientPersona,personae)) {
+    console.error("The salient persona is not a valid persona");
+  }
+  if( (p<0) || (p>1) ) {
+    console.error("The salient persona probability must be between 0 and 1");
+  } 
+  
+  var aux = function(persona) {
+    if (persona === salientPersona) {
+      return p
+    }
+    else {
+      //print((1-p)/(personae.length-1));
+      return (1-p) / (personae.length-1) ;
+    }
+  }  
+  
+  return map(aux,personae);
+}
+// Return a distribution with all persona with a salient property 
+// equally probable
+// and others also equally probable
+var salientPropertyDis = function(p,salientProperty) {
+  if( (p<0) || (p>1) ) {
+    console.error("The salient persona probability must be between 0 and 1");
+  } 
+  var count = function() {
+    return filter(function(x){return 
+isIn("competent",x)},personae).length;
+  } ();
+  if(count === 0) {
+    console.error("No persona with that property was found.")
+  }
+  var aux = function(persona) {
+    if (isIn(salientProperty,persona)) {
+      return p/ count;
+    }
+    else {
+      return (1-p) / (personae.length-count);
+    }
+  }  
+  return map(aux,personae);
+}
+var speakerPriorPlot = function(utterance,personality,minBound,maxBound) 
+{
+  var minBound = minBound || 1;
+  var maxBound = maxBound || 100;
+  
+  globalStore.cnt = 0;
+  
+  var pValues = map(function(x){ return x/100},rangeN(minBound,maxBound));
+  var xValues = map(function(p) { return salientPersonaDis(p,personality)},pValues);
+    
+  var y = map(
+  function(x) {
+    globalStore.cnt += 1;
+    if (globalStore.cnt%10 === 0) {
+      print(speaker(personality,{priorOpt:x}));
+    }
+    return Math.exp(speaker(personality,{priorOpt:x}).score(utterance));},
+    xValues);
+  //print(zip(xValues,y));
+  viz.line(xValues,y,{xLabel:"Prior",yLabel:"Ps(m|p)"});  
+};
+
+
+speakerPriorPlot("in",personae[2]);
+
+
+
+
 // Plot the speaker probability of uttering m for different values of temperature
-// minBound and maxBoud are optional parameters for min and max value of temperature
+// minBound and maxBoud are optional parameters for min and max value of 
+// temperature
 // They are set by default to 1 and 50 respectively
 // Future implementation: plot for each m or p ?
 // Should check that maxBound > minBound
-var speakerTempPlot = function(utterance,personality,minBound,maxBound) {
-  var minBound = minBound || 1;
+var speakerTempPlot = function(utterance,personality,minBound,maxBound) 
+{
+  var minBound = minBound || 0;
   var maxBound = maxBound || 50;
   
   var tempValues = rangeN(minBound,maxBound);
   
   var y = map(
-  function(x) { return Math.exp(speaker(personality,x).score(utterance));},
+  function(x) { 
+    return Math.exp(speaker(personality,{tempOpt:x}).score(utterance));},
     tempValues);
+  
   viz.line(tempValues,y,{xLabel:"Temperature",yLabel:"Ps(m|p)"});  
 };
 
 
 
 
-
-
+/*
 print("List of personae and their prior probabilities:");
 viz.table(Infer({method:'enumerate'},personalityPrior));
 print('');
@@ -230,9 +328,10 @@ viz.hist(conditPrior("ing"));
 print("Listener belief of a persona after hearing 'in':");
 viz.table(conditPrior("in"));
 
-/*
+
 /// Ps(m|P)
-display("Probability of S to use a message given a persona she wants to build:")
+display("Probability of S to use a message given a persona she wants to 
+build:")
 display(condProb2Table(speaker,personae,utterances,2));
 
 print("Plot of the probability of uttering 'ing' given she wants to be")
@@ -257,3 +356,4 @@ print("L's beliefs about a persona after hearing m (here in)")
 viz(listener("in"))
 display(condProb2Table(listener,utterances,personae,2))
 */
+
