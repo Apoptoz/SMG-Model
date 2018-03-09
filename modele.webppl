@@ -161,17 +161,11 @@ var persDistribution = function() {
 //Ps(m|P) > speaker probability of using m given they want to construct P
 //var speaker = function(personality,{tempOpt:temp,priorOpt:prior}) {
 var speaker = function(personality,option) {
-  
-  //var defPrior = Math.exp(Infer({method:'enumerate'},personalityPrior).score(personality));
-  //print("DefPrior is:" + defPrior);
-  var temp = option.tempOpt == undefined ? temperature : option.tempOpt;
-  
-  //var prior = prior == undefined ? defPrior : prior;
-  //print("prior is :"+ prior);
-  
+  var temp = (option === undefined || option.tempOpt === undefined) ? temperature : option.tempOpt;
+  var prior = (option === undefined || option.priorOpt === undefined) ? undefined : option.priorOpt;
   Infer({model: function() {
-    var utterance = uniformDraw(utterances);   
-    factor(temp * (conditPrior(utterance,option.priorOpt).score(personality) - 
+    var utterance = uniformDraw(utterances);
+    factor(temp * (conditPrior(utterance,prior).score(personality) - 
 cost(utterance)))
     return utterance
   }})
@@ -242,8 +236,7 @@ var salientPropertyDis = function(p,salientProperty) {
     console.error("The salient persona probability must be between 0 and 1");
   } 
   var count = function() {
-    return filter(function(x){return 
-isIn("competent",x)},personae).length;
+    return filter(function(x){return isIn("competent",x)},personae).length;
   } ();
   if(count === 0) {
     console.error("No persona with that property was found.")
@@ -258,6 +251,7 @@ isIn("competent",x)},personae).length;
   }  
   return map(aux,personae);
 }
+
 var speakerPriorPlot = function(utterance,personality,minBound,maxBound) 
 {
   var minBound = minBound || 1;
@@ -270,20 +264,14 @@ var speakerPriorPlot = function(utterance,personality,minBound,maxBound)
     
   var y = map(
   function(x) {
-    globalStore.cnt += 1;
-    if (globalStore.cnt%10 === 0) {
-      print(speaker(personality,{priorOpt:x}));
-    }
     return Math.exp(speaker(personality,{priorOpt:x}).score(utterance));},
     xValues);
-  //print(zip(xValues,y));
-  viz.line(xValues,y,{xLabel:"Prior",yLabel:"Ps(m|p)"});  
+  viz.line(pValues,y,{xLabel:"Prior",yLabel:"Ps(m|p)"});  
 };
+print(personae);
 
-
-speakerPriorPlot("in",personae[2]);
-
-
+viz(speaker(personae[0],{priorOpt:[0.1,0.3,0.3,0.3]}))
+speakerPriorPlot("in",personae[0]);
 
 
 // Plot the speaker probability of uttering m for different values of temperature
@@ -300,8 +288,9 @@ var speakerTempPlot = function(utterance,personality,minBound,maxBound)
   var tempValues = rangeN(minBound,maxBound);
   
   var y = map(
-  function(x) { 
-    return Math.exp(speaker(personality,{tempOpt:x}).score(utterance));},
+  function(x) {
+    var S = speaker(personality,{tempOpt:x}).score(utterance);
+    return (S === null) ? 0 : Math.exp(S);},
     tempValues);
   
   viz.line(tempValues,y,{xLabel:"Temperature",yLabel:"Ps(m|p)"});  
@@ -328,15 +317,18 @@ viz.hist(conditPrior("ing"));
 print("Listener belief of a persona after hearing 'in':");
 viz.table(conditPrior("in"));
 
-
 /// Ps(m|P)
-display("Probability of S to use a message given a persona she wants to 
-build:")
-display(condProb2Table(speaker,personae,utterances,2));
+display("Probability of S to use a message given a persona she wants to build:")
+//display(condProb2Table(speaker,personae,utterances,2));
+
+
+speakerTempPlot("ing",personae[3]);
+
 
 print("Plot of the probability of uttering 'ing' given she wants to be")
 print("friendly and incompetent, for different temperatures")
 speakerTempPlot("ing","friendly-competent");
+
 
 
 //P_PERS(P)
@@ -356,4 +348,3 @@ print("L's beliefs about a persona after hearing m (here in)")
 viz(listener("in"))
 display(condProb2Table(listener,utterances,personae,2))
 */
-
