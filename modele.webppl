@@ -1,4 +1,6 @@
-ondProb2Table = function(condProbFct, row_names, col_names, 
+///fold:
+// print function 'condProb2Table' for conditional probability tables
+var condProb2Table = function(condProbFct, row_names, col_names, 
 precision){
   var matrix = map(function(row) {
     map(function(col) {
@@ -27,7 +29,7 @@ var listPersonae = function(universe,relation) {
     else if (index2 === -1) {
       return fun(universe,relation,index1-1,index1-2,list);
     }
-    // If the two universe are not antagonists, add to the list
+    // If the two universes are not antagonists, add to the list
     else if ( relation[universe[index1]] !== universe[index2] 
              && relation[universe[index2]] !== universe[index1]) {
       list.push([universe[index1],universe[index2]]);
@@ -43,7 +45,6 @@ var listPersonae = function(universe,relation) {
 var isIn = function(val,arr) {
   return arr.indexOf(val) > -1;
 }
-
 ///
 
 /// PARAMETERS ///
@@ -57,9 +58,10 @@ var relation =
     { 'competent':'incompetent',
       'friendly':'aloof'
     };
-
-var personae = listPersonae(universe,relation);
-
+// [["incompetent","aloof"],["incompetent","friendly"]...]
+var parsedPersonae = listPersonae(universe,relation);
+// ["aloof-incompetent","friendly-incompetent",...]
+var personae = map(function(x) { return x.join("-")},parsedPersonae);
 // Possible utterances
 var utterances = ["ing","in"];
 
@@ -82,19 +84,18 @@ var personaTemperature = 6;
 // Payoff function for selecting a persona
 // PROBLEM: You have to get the same struct and order than the one
 // that personae gives you.
-var muFunction = function(personality) {
-  var persString = personality.join("-");
+var muFunction = function(persona) {
   var table = {
     "friendly-competent":6,
     "aloof-competent":4,
     "friendly-incompetent":4,
     "aloof-incompetent":0
   };
-  return table[persString];
+  return table[persona];
 }
 
 //  Prior distribution of the listener on the personae of the speaker
-var personalityPrior = function(prior) {
+var personaPrior = function(prior) {
   if (prior==="uniform") {
     uniformDraw(personae);
   }
@@ -107,52 +108,38 @@ var personalityPrior = function(prior) {
   }
 };
 
-// Return true if a persona corresponds to the Eckert-Montague field of 
-// a variation
-// NO LONGER USEFUL! You can get EM Field with getEMField(utt)
-var belongToVar = function(utterance,personality) {
-  utterance === "in" ? personality !== "aloof-competent":
-  utterance === "ing" ? personality !== "friendly-incompetent":
-  true
-}
-
 var eckertFields = {
   ing:['competent','aloof'],
   in:['incompetent','friendly']
 };
 // Return the EM Field of an utterance based on the eckertFields var
 var getEMField = cache(function(utt) {
-  return filter(function(x) { 
+  var EMField = filter(function(x) { 
     return _.intersection(eckertFields[utt],x).length !== 0;
-  },personae);
+  },parsedPersonae);
+  return map(function(el) {return el.join("-")},EMField);
 });
-
 
 ///  END OF PARAMETERS  ///
 
-
-
 /// MODEL FUNCTIONS ///
-
-
 
 //Pr(P|m) > listener prior belief in a persona given a message
 var conditPrior = function(utterance,prior) {
   Infer({model: function() {
-    var personality = personalityPrior(prior);
-    var uttTruthVal = isIn(personality,getEMField(utterance));
-    //var uttTruthVal = belongToVar(utterance,personality);
+    var persona = personaPrior(prior);
+    var uttTruthVal = isIn(persona,getEMField(utterance));
     condition(uttTruthVal == true)
-    return personality
+    return persona
   }})
 };
 
 // P_PERS(P) > Probability of chosing a persona
 var persDistribution = function() {
   Infer({model: function() {
-    var personality = uniformDraw(personae)
-    factor(personaTemperature * muFunction(personality))
-    return personality
+    var persona = uniformDraw(personae);
+    factor(personaTemperature * muFunction(persona))
+    return persona;
   }})
 }
 
@@ -173,17 +160,17 @@ var speaker = function(persona,option) {
 // P_S(m) > Probability of a speaker of uttering a message
 var speakerDistrib = function(utterance) {
   return sum(map(
-    function(personality) {
-      return Math.exp(persDistribution().score(personality)+speaker(personality).score(utterance));
-    },personae))
+    function(persona) {
+      return Math.exp(persDistribution().score(persona)+speaker(persona).score(utterance));
+    },personae));
 }
 
 // P_L(P|m)
 var listener = function(utterance) {
   Infer({model: function() {
-    var personality = personalityPrior()
-    observe(speaker(personality),utterance)
-    return personality
+    var persona = personaPrior()
+    observe(speaker(persona),utterance)
+    return persona
   }})
 }
 
@@ -285,7 +272,7 @@ var speakerPropPriorPlot = function(utterance,persona,property,minBound,maxBound
 // They are set by default to 1 and 50 respectively
 // Future implementation: plot for each m or p ?
 // Should check that maxBound > minBound
-var speakerTempPlot = function(utterance,personality,minBound,maxBound) 
+var speakerTempPlot = function(utterance,persona,minBound,maxBound) 
 {
   var minBound = minBound || 0;
   var maxBound = maxBound || 50;
@@ -294,7 +281,7 @@ var speakerTempPlot = function(utterance,personality,minBound,maxBound)
   
   var y = map(
   function(x) {
-    var S = speaker(personality,{tempOpt:x}).score(utterance);
+    var S = speaker(persona,{tempOpt:x}).score(utterance);
     return (S === null) ? 0 : Math.exp(S);},
     tempValues);
   
@@ -303,10 +290,13 @@ var speakerTempPlot = function(utterance,personality,minBound,maxBound)
 
 
 
-/*
+
+/// MODEL PRESENTATION
+
 print("List of personae and their prior probabilities:");
-viz.table(Infer({method:'enumerate'},personalityPrior));
+viz.table(Infer({method:'enumerate'},personaPrior));
 print('');
+
 
 
 /// Pr(P|m)
@@ -323,33 +313,34 @@ viz.table(conditPrior("in"));
 
 /// Ps(m|P)
 display("Probability of S to use a message given a persona she wants to build:")
-//display(condProb2Table(speaker,personae,utterances,2));
+display(condProb2Table(speaker,personae,utterances,2));
 
 
-speakerTempPlot("ing",personae[3]);
 
 
 print("Plot of the probability of uttering 'ing' given she wants to be")
 print("friendly and incompetent, for different temperatures")
 speakerTempPlot("ing","friendly-competent");
 
+print("Plot of the probability of uttering 'in' given that she wants to be");
+print("aloof and incompetent, for different priors of being aloof.");
+speakerPropPriorPlot("in","aloof-incompetent","aloof");
 
 
 //P_PERS(P)
-display("")
-display("Probability distribution of chosing a persona :")
-viz.table(persDistribution())
+display("");
+display("Probability distribution of chosing a persona :");
+viz.table(persDistribution());
 
 //P_S(m)
 print("Probability of speaker uttering 'in': ");
 print(speakerDistrib("in"));
 print("Probability of speaker uttering 'ing': ");
 print(speakerDistrib("ing"));
-print("")
+print("");
 
 //P_L(P|m)
-print("L's beliefs about a persona after hearing m (here in)")
-viz(listener("in"))
-display(condProb2Table(listener,utterances,personae,2))
-*/
+print("L's beliefs about a persona after hearing m (here in)");
+viz(listener("in"));
+display(condProb2Table(listener,utterances,personae,2));
 
